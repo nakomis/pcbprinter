@@ -24,7 +24,7 @@ function meshToStlBuffer(mesh: any): ArrayBuffer {
     const v1x = vertProperties[b1], v1y = vertProperties[b1 + 1], v1z = vertProperties[b1 + 2];
     const v2x = vertProperties[b2], v2y = vertProperties[b2 + 1], v2z = vertProperties[b2 + 2];
 
-    // Face normal via cross product (now correct for CCW-from-outside convention)
+    // Face normal via cross product (CCW-from-outside → outward normals)
     const ex = v1x - v0x, ey = v1y - v0y, ez = v1z - v0z;
     const fx = v2x - v0x, fy = v2y - v0y, fz = v2z - v0z;
     let nx = ey * fz - ez * fy, ny = ez * fx - ex * fz, nz = ex * fy - ey * fx;
@@ -45,51 +45,61 @@ function meshToStlBuffer(mesh: any): ArrayBuffer {
 }
 
 /**
- * Build a rounded-rectangle (capsule) solid for a trace using manifold-3d.
- * zOffsetMm: z position of the BOTTOM face of the solid.
- * Manifold.cylinder with center=true is used so the caps are Z-centred at zCenter.
- * Note: manifold-3d rotate() takes DEGREES, not radians.
+ * Build a 2D rounded-rectangle (stadium) CrossSection for a trace footprint.
+ * This is used to union all trace footprints in 2D before extruding to a
+ * single channel/bump solid — avoids T-junction non-manifold edges that arise
+ * from multiple sequential 3D boolean subtractions at the same z-plane.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeTraceSolid(M: any, trace: Trace, halfWidthMm: number, heightMm: number, zOffsetMm: number, toMm: (v: number) => number, segments: number): any {
-  const x1 = toMm(trace.x1), y1 = -toMm(trace.y1);
-  const x2 = toMm(trace.x2), y2 = -toMm(trace.y2);
-  const h = halfWidthMm;
+function makeTrace2D(CS: any, x1: number, y1: number, x2: number, y2: number, halfWidth: number, segments: number): any {
   const dx = x2 - x1, dy = y2 - y1;
   const len = Math.hypot(dx, dy);
-  const zCenter = zOffsetMm + heightMm / 2;
-
-  // center=true → cylinder is Z-centred, so translate to zCenter positions it correctly
-  const capA = M.cylinder(heightMm, h, h, segments, true).translate([x1, y1, zCenter]);
-  const capB = M.cylinder(heightMm, h, h, segments, true).translate([x2, y2, zCenter]);
+  const capA = CS.circle(halfWidth, segments).translate([x1, y1]);
   if (len < 1e-9) return capA;
-
+  const capB = CS.circle(halfWidth, segments).translate([x2, y2]);
   const angleDeg = Math.atan2(dy, dx) * (180 / Math.PI);
   const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
-  const bar = M.cube([len, h * 2, heightMm], true)
-    .rotate([0, 0, angleDeg])
-    .translate([midX, midY, zCenter]);
+  const bar = CS.square([len, halfWidth * 2], true).rotate(angleDeg).translate([midX, midY]);
   return bar.add(capA).add(capB);
 }
 
 /**
- * Extrude a groundfill polygon using manifold-3d CrossSection.
- * contours[0] = outer boundary, contours[1..] = holes.
+ * Build the union of all trace + groundfill footprints as a single 2D CrossSection.
+ * Returns null if there are no traces and no ground fills (or recess === 0).
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function makeGroundFillSolid(CS: any, gf: GroundFill, heightMm: number, zOffset: number, toMm: (v: number) => number): any | null {
-  if (gf.contours.length === 0) return null;
-  const contours = gf.contours
-    .filter(c => c.length >= 3)
-    .map(c => c.map(([x, y]) => [toMm(x), -toMm(y)] as [number, number]));
-  if (contours.length === 0) return null;
-  try {
-    const cs = new CS(contours);
-    if (cs.isEmpty()) return null;
-    return cs.extrude(heightMm).translate([0, 0, zOffset]);
-  } catch {
-    return null;
+function buildChannelFootprint2D(
+  CS: any,
+  traces: Trace[],
+  groundFills: GroundFill[],
+  halfWidthFn: (t: Trace) => number,
+  toMm: (v: number) => number,
+  segments: number,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+): any | null {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let footprint: any = null;
+
+  for (const trace of traces) {
+    const hw = halfWidthFn(trace);
+    const x1 = toMm(trace.x1), y1 = -toMm(trace.y1);
+    const x2 = toMm(trace.x2), y2 = -toMm(trace.y2);
+    const shape = makeTrace2D(CS, x1, y1, x2, y2, hw, segments);
+    footprint = footprint ? footprint.add(shape) : shape;
   }
+
+  for (const gf of groundFills) {
+    const contours = gf.contours
+      .filter(c => c.length >= 3)
+      .map(c => c.map(([x, y]) => [toMm(x), -toMm(y)] as [number, number]));
+    if (contours.length === 0) continue;
+    try {
+      const gf2d = new CS(contours);
+      if (!gf2d.isEmpty()) footprint = footprint ? footprint.add(gf2d) : gf2d;
+    } catch { /* skip malformed contours */ }
+  }
+
+  return footprint;
 }
 
 export async function buildStls(model: BoardModel, options: PrinterOptions): Promise<StlOutputs> {
@@ -108,7 +118,10 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
   const pressT = options.pressThicknessMm;
   const segments = options.traceSegments;
 
-  // Set global circular segment count for manifold-3d primitives
+  // eps: small overrun used when subtracting/adding solids that would otherwise
+  // create exactly-coplanar faces, which causes degenerate triangles in CSG.
+  const eps = 0.05;
+
   wasm.setCircularSegments(segments);
 
   const boardW = toMm(boardRect.w);
@@ -118,11 +131,16 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
 
   // ── PCB ──────────────────────────────────────────────────────────────────
   //
-  // Build the 2D cross-section first (board outline minus drill holes) then
-  // extrude. CrossSection.extrude() guarantees a clean bottom face at z=0
-  // with correct outward (-Z) normals — avoiding the degenerate-triangle issue
-  // that 3D cube().subtract(cylinder) produces at the z=0 boundary.
+  // Strategy: all channel geometry is unioned in 2D first, then extruded to a
+  // single 3D solid and subtracted from the board in one operation.  This avoids
+  // the T-junction non-manifold edges that arise when many separate 3D channel
+  // solids are subtracted sequentially (each one can land edges on the already-
+  // triangulated board-top face).
+  //
+  // The channel solid is extended eps above z=t and eps below z=t-recess so it
+  // is never exactly coplanar with any face of the board.
 
+  // 2D board profile: outline minus drill holes
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let boardProfile: any = CS.square([boardW, boardH], true).translate([boardCx, boardCy]);
   for (const pad of pads) {
@@ -131,24 +149,25 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
     const r = toMm(pad.drillRadius);
     boardProfile = boardProfile.subtract(CS.circle(r, segments).translate([cx, cy]));
   }
+
+  // Extrude board profile to full thickness
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let board: any = boardProfile.extrude(t);
 
-  // Trace channels recessed from the top face (3D subtract, only touches z≈t).
-  // Extend by 0.05 mm above z=t so the channel solid is never exactly coplanar
-  // with the board top face — coplanar CSG produces degenerate triangles / non-manifold edges.
-  const eps = 0.05;
+  // Build channel footprint in 2D then carve with a single 3D subtract
   if (recess > 0) {
-    for (const trace of traces) {
-      const hw = toMm(trace.strokeWidth) / 2;
-      board = board.subtract(makeTraceSolid(M, trace, hw, recess + eps, t - recess, toMm, segments));
+    const channelFootprint = buildChannelFootprint2D(
+      CS, traces, groundFills,
+      (trace) => toMm(trace.strokeWidth) / 2,
+      toMm, segments,
+    );
+    if (channelFootprint) {
+      // Extrude from z = t-recess-eps  to  z = t+eps  (overruns both faces)
+      const channelSolid = channelFootprint
+        .extrude(recess + 2 * eps)
+        .translate([0, 0, t - recess - eps]);
+      board = board.subtract(channelSolid);
     }
-  }
-
-  // Groundfill channels.
-  for (const gf of groundFills) {
-    const solid = makeGroundFillSolid(CS, gf, recess + eps, t - recess, toMm);
-    if (solid) board = board.subtract(solid);
   }
 
   // ── PRESS ─────────────────────────────────────────────────────────────
@@ -159,24 +178,34 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
   //                               │  backing plate
   //   z = 0                       ┘  flat back (print-bed face)
   //
-  // Same 2D-extrude approach for the backing plate; bumps/pins added via 3D union.
-  // Mirror around board X centre before export (press is flipped over for use).
+  // All trace+fill bump shapes are unioned in 2D first (same as the pcb channel
+  // strategy) then a single 3D solid is added to the press plate.  The bump
+  // solid is embedded eps below z=pressT so its pcb sits inside the plate
+  // rather than exactly on its top face — this breaks the coplanar face and avoids
+  // degenerate triangles at the union boundary.
+  //
+  // Mirror around board X centre before export (press is flipped for use).
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let press: any = CS.square([boardW, boardH], true).translate([boardCx, boardCy]).extrude(pressT);
 
-  // Trace bumps protruding from the pressing face.
-  // Embed eps into the plate (zOffset = pressT - eps, height = recess + eps) so the
-  // bump pcb is never exactly coplanar with the press top face.
+  // Bump solid: 2D footprint extruded, embedded eps into the plate
   if (recess > 0) {
-    for (const trace of traces) {
-      const hw = Math.max(0.1, toMm(trace.strokeWidth) / 2 - clearance / 2);
-      press = press.add(makeTraceSolid(M, trace, hw, recess + eps, pressT - eps, toMm, segments));
+    const bumpFootprint = buildChannelFootprint2D(
+      CS, traces, groundFills,
+      (trace) => Math.max(0.1, toMm(trace.strokeWidth) / 2 - clearance / 2),
+      toMm, segments,
+    );
+    if (bumpFootprint) {
+      const bumpSolid = bumpFootprint
+        .extrude(recess + eps)
+        .translate([0, 0, pressT - eps]);
+      press = press.add(bumpSolid);
     }
   }
 
-  // Alignment pins at each pad position — fit into pcb drill holes to locate press.
-  // Embed eps into the plate for the same coplanarity reason.
+  // Alignment pins: cylinders embedded eps below the plate top so there is no
+  // coplanar face between the pin pcb and the press top surface.
   const pinHeight = 2.0;
   for (const pad of pads) {
     const cx = toMm(pad.cx);
