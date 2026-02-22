@@ -138,10 +138,11 @@ describe('parseFritzingSvg', () => {
   });
 
   describe('pads and footprint circles', () => {
-    it('collects filled circles as pads', () => {
+    it('collects circles in copper groups as pads (Fritzing uses fill="none" + stroke)', () => {
+      // Real Fritzing SVGs use fill="none" stroke="#F7BD13" for copper pads
       const svg = makeSvg(`
         <g id="copper0">
-          <circle cx="30" cy="40" r="5" fill="#cc0000"/>
+          <circle cx="30" cy="40" r="5" fill="none" stroke="#F7BD13"/>
         </g>
       `, '1in', '0 0 96 96');
       const model = parseFritzingSvg(svg, DEFAULT_OPTIONS);
@@ -149,21 +150,19 @@ describe('parseFritzingSvg', () => {
       expect(model.pads[0].cx).toBeCloseTo(30);
       expect(model.pads[0].cy).toBeCloseTo(40);
       expect(model.pads[0].padRadius).toBeCloseTo(5);
-      expect(model.pads[0].color).toBe('#cc0000');
+      expect(model.pads[0].color).toBe('#F7BD13');
     });
 
-    it('collects fill="none" circles as footprintCircles, not pads', () => {
+    it('all circles in copper groups are pads, not footprintCircles', () => {
+      // In Fritzing PCB SVGs, all circles inside copper groups represent through-hole pads
       const svg = makeSvg(`
         <g id="copper0">
-          <circle cx="10" cy="10" r="8" fill="none"/>
+          <circle cx="10" cy="10" r="8" fill="none" stroke="#F7BD13"/>
         </g>
       `);
       const model = parseFritzingSvg(svg, DEFAULT_OPTIONS);
-      expect(model.pads).toHaveLength(0);
-      expect(model.footprintCircles).toHaveLength(1);
-      expect(model.footprintCircles[0].cx).toBeCloseTo(10);
-      expect(model.footprintCircles[0].cy).toBeCloseTo(10);
-      expect(model.footprintCircles[0].r).toBeCloseTo(8);
+      expect(model.pads).toHaveLength(1);
+      expect(model.footprintCircles).toHaveLength(0);
     });
 
     it('uses drillDiameterMm from options for pad drillRadius', () => {

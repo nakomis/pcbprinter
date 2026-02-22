@@ -123,6 +123,9 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
     presss.push(subtract(padDisc, drillHole));
   }
 
+  if (presss.length === 0) {
+    throw new Error('No traces or pads found — nothing to put in press STL');
+  }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pressSolid: any = presss.length === 1
     ? presss[0]

@@ -107,26 +107,26 @@ function collectFromCopper(
       const color = getStroke(child);
       traces.push({ x1: tx1, y1: ty1, x2: tx2, y2: ty2, strokeWidth: scaledStrokeWidth, color });
     } else if (tag === 'circle') {
-      const fill = getFill(child);
       const cx = parseFloat(child.getAttribute('cx') ?? '0');
       const cy = parseFloat(child.getAttribute('cy') ?? '0');
       const r = parseFloat(child.getAttribute('r') ?? '0');
       const [tcx, tcy] = applyToPoint(transform, cx, cy);
-      // Scale the radius
+      // Scale the radius using the x-scale component of the transform
       const scaledR = r * Math.abs(transform[0]);
-
-      if (fill === 'none') {
-        footprintCircles.push({ cx: tcx, cy: tcy, r: scaledR });
-      } else {
-        const drillRadius = (options.drillDiameterMm / 2) * svgUnitsPerMm;
-        pads.push({
-          cx: tcx,
-          cy: tcy,
-          drillRadius,
-          padRadius: scaledR,
-          color: fill,
-        });
-      }
+      // All circles inside copper groups are through-hole pads in Fritzing SVGs.
+      // Use stroke colour if present (Fritzing uses fill="none" + stroke for copper rings),
+      // otherwise fall back to fill.
+      const stroke = child.getAttribute('stroke');
+      const fill = child.getAttribute('fill');
+      const color = (stroke && stroke !== 'none') ? stroke : (fill && fill !== 'none') ? fill : '#f2c600';
+      const drillRadius = (options.drillDiameterMm / 2) * svgUnitsPerMm;
+      pads.push({
+        cx: tcx,
+        cy: tcy,
+        drillRadius,
+        padRadius: scaledR,
+        color,
+      });
     } else if (tag === 'g') {
       // Recurse into nested groups, passing this node's accumulated transform
       collectFromCopper(child, transform, svgUnitsPerMm, options, traces, pads, footprintCircles);
@@ -188,24 +188,30 @@ function walkGroup(
     }
   }
 
-  // If this is a copper group, collect lines and circles from it
+  // If this is a copper group, collect circles (pads) from it
   if (isCopper) {
-    // Pass transform (this node's accumulated transform) as parentTransform to collectFromCopper,
-    // but collectFromCopper will re-apply this node's own transform — so we need to pass
-    // the PARENT's transform and let collectFromCopper handle this node.
-    // Actually: collectFromCopper processes the node's children after applying node's own transform.
-    // We pass 'transform' (already includes this copper group's transform) and process children.
-    // But collectFromCopper applies node.getAttribute('transform') to parentTransform...
-    // So we need to pass parentTransform (not transform) to collectFromCopper to avoid double-applying.
     collectFromCopper(node, parentTransform, svgUnitsPerMm, options, traces, pads, footprintCircles);
     return;
   }
 
-  // Recurse into child groups
+  // Collect <line> elements that are direct children of any non-excluded group
+  // (Fritzing places traces as top-level <g partID="..."><line .../></g> outside copper groups)
   const children = node.childNodes;
   for (let i = 0; i < children.length; i++) {
     const child = children[i] as Element;
-    if (child.nodeType === 1 && child.tagName === 'g') {
+    if (child.nodeType !== 1) continue;
+    if (child.tagName === 'line') {
+      const x1 = parseFloat(child.getAttribute('x1') ?? '0');
+      const y1 = parseFloat(child.getAttribute('y1') ?? '0');
+      const x2 = parseFloat(child.getAttribute('x2') ?? '0');
+      const y2 = parseFloat(child.getAttribute('y2') ?? '0');
+      const [tx1, ty1] = applyToPoint(transform, x1, y1);
+      const [tx2, ty2] = applyToPoint(transform, x2, y2);
+      const strokeWidth = parseStrokeWidth(child.getAttribute('stroke-width'));
+      const scaledStrokeWidth = strokeWidth * Math.abs(transform[0]);
+      const color = getStroke(child);
+      traces.push({ x1: tx1, y1: ty1, x2: tx2, y2: ty2, strokeWidth: scaledStrokeWidth, color });
+    } else if (child.tagName === 'g') {
       walkGroup(child, transform, svgUnitsPerMm, options, traces, pads, footprintCircles, boardRect);
     }
   }
