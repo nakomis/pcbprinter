@@ -1,4 +1,94 @@
-// Entry point — to be implemented in Phase 2 integration.
-// Parses CLI args, calls parseFritzingSvg → snapTracesToPads → buildSvg / buildStls → writes files.
-console.error('cli not yet implemented');
-process.exit(1);
+#!/usr/bin/env node
+import fs from 'node:fs';
+import path from 'node:path';
+import { Command } from 'commander';
+import chalk from 'chalk';
+import { parseFritzingSvg } from './parser.js';
+import { snapTracesToPads } from './pads.js';
+import { buildSvg } from './svgWriter.js';
+import { buildStls } from './stlWriter.js';
+import { DEFAULT_OPTIONS, type PrinterOptions } from './types.js';
+
+const program = new Command();
+
+program
+  .name('pcbprinter')
+  .description('Convert Fritzing PCB SVG exports to 3D-printable STL files')
+  .argument('<input.svg>', 'Fritzing PCB SVG export')
+  .option('-o, --out-dir <dir>', 'Output directory', DEFAULT_OPTIONS.outDir)
+  .option('--svg', 'Also write intermediate SVG', false)
+  .option('--board-color <hex>', 'SVG substrate colour', DEFAULT_OPTIONS.boardColor)
+  .option('--board-thickness <mm>', 'STL board thickness in mm', String(DEFAULT_OPTIONS.boardThicknessMm))
+  .option('--trace-height <mm>', 'STL press trace extrusion height in mm', String(DEFAULT_OPTIONS.traceHeightMm))
+  .option('--trace-recess <mm>', 'Depth of channels routed into pcb for trace registration; 0 = flat pcb', String(DEFAULT_OPTIONS.traceRecessMm))
+  .option('--drill-diameter <mm>', 'Drill hole diameter in mm', String(DEFAULT_OPTIONS.drillDiameterMm))
+  .option('--snap-tolerance <mm>', 'Max distance to snap trace end to pad centre in mm', String(DEFAULT_OPTIONS.snapToleranceMm))
+  .option('--trace-segments <n>', 'Circle segments for rounded trace ends', String(DEFAULT_OPTIONS.traceSegments))
+  .action(async (inputFile: string, opts) => {
+    // Resolve input
+    const inputPath = path.resolve(inputFile);
+    if (!fs.existsSync(inputPath)) {
+      console.error(chalk.red(`Error: file not found: ${inputPath}`));
+      process.exit(1);
+    }
+
+    const stem = path.basename(inputPath, path.extname(inputPath));
+    const outDir = path.resolve(opts.outDir);
+    fs.mkdirSync(outDir, { recursive: true });
+
+    const options: PrinterOptions = {
+      outDir,
+      writeSvg: opts.svg,
+      boardColor: opts.boardColor,
+      boardThicknessMm: parseFloat(opts.boardThickness),
+      traceHeightMm: parseFloat(opts.traceHeight),
+      traceRecessMm: parseFloat(opts.traceRecess),
+      drillDiameterMm: parseFloat(opts.drillDiameter),
+      snapToleranceMm: parseFloat(opts.snapTolerance),
+      traceSegments: parseInt(opts.traceSegments, 10),
+    };
+
+    console.log(chalk.cyan(`pcbprinter`) + ` — processing ${chalk.bold(path.basename(inputPath))}`);
+
+    // Parse
+    const svgSource = fs.readFileSync(inputPath, 'utf8');
+    let model;
+    try {
+      model = parseFritzingSvg(svgSource, options);
+    } catch (err) {
+      console.error(chalk.red('Parse error:'), (err as Error).message);
+      process.exit(1);
+    }
+    console.log(chalk.green('✓') + ` parsed — ${model.traces.length} traces, ${model.pads.length} pads`);
+
+    // Snap trace endpoints to pads
+    snapTracesToPads(model, options);
+    console.log(chalk.green('✓') + ` snapped trace endpoints`);
+
+    // Write SVG if requested
+    if (options.writeSvg) {
+      const svgOut = path.join(outDir, `${stem}-fixed.svg`);
+      fs.writeFileSync(svgOut, buildSvg(model, options), 'utf8');
+      console.log(chalk.green('✓') + ` SVG  → ${svgOut}`);
+    }
+
+    // Build and write STLs
+    let stls;
+    try {
+      stls = await buildStls(model, options);
+    } catch (err) {
+      console.error(chalk.red('STL generation error:'), (err as Error).message);
+      process.exit(1);
+    }
+
+    const pcbPath = path.join(outDir, `${stem}-pcb.stl`);
+    const pressPath = path.join(outDir, `${stem}-press.stl`);
+    fs.writeFileSync(pcbPath, Buffer.from(stls.pcb));
+    fs.writeFileSync(pressPath, Buffer.from(stls.press));
+
+    console.log(chalk.green('✓') + ` pcb      → ${pcbPath}`);
+    console.log(chalk.green('✓') + ` press → ${pressPath}`);
+    console.log(chalk.bold.green('Done.'));
+  });
+
+program.parse();
