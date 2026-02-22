@@ -10,6 +10,7 @@ function makeModel(overrides: Partial<BoardModel> = {}): BoardModel {
     traces: [],
     pads: [],
     footprintCircles: [],
+    groundFills: [],
     ...overrides,
   };
 }

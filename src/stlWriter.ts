@@ -1,9 +1,9 @@
-import type { BoardModel, PrinterOptions, Trace } from './types.js';
+import type { BoardModel, PrinterOptions, Trace, GroundFill } from './types.js';
 import jscad from '@jscad/modeling';
 import { serialize } from '@jscad/stl-serializer';
 
 const { primitives, booleans, transforms, extrusions } = jscad;
-const { cylinder, cuboid, rectangle } = primitives;
+const { cylinder, cuboid, rectangle, polygon } = primitives;
 const { union, subtract } = booleans;
 const { translate, rotate } = transforms;
 const { extrudeLinear } = extrusions;
@@ -59,6 +59,35 @@ function makeTraceSolid(
   return union(bar, capA, capB);
 }
 
+/**
+ * Extrude a groundfill polygon into a JSCAD solid at height zOffset, thickness heightMm.
+ * contours[0] = outer boundary, contours[1..] = holes (even-odd rule via JSCAD polygon paths).
+ * Returns null if the polygon has no usable points.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function makeGroundFillSolid(gf: GroundFill, heightMm: number, zOffset: number, toMm: (v: number) => number): any | null {
+  if (gf.contours.length === 0) return null;
+
+  // Flatten all contour points into a single points array; build paths (index ranges) for each contour
+  const allPoints: [number, number][] = [];
+  const paths: number[][] = [];
+
+  for (const contour of gf.contours) {
+    if (contour.length < 3) continue;
+    const start = allPoints.length;
+    for (const [x, y] of contour) {
+      allPoints.push([toMm(x), -toMm(y)]); // negate Y: SVG Y-down → JSCAD Y-up
+    }
+    const indices = Array.from({ length: contour.length }, (_, i) => start + i);
+    paths.push(indices);
+  }
+
+  if (allPoints.length < 3) return null;
+
+  const poly2d = polygon({ points: allPoints, paths });
+  return translate([0, 0, zOffset], extrudeLinear({ height: heightMm }, poly2d));
+}
+
 export async function buildStls(model: BoardModel, options: PrinterOptions): Promise<StlOutputs> {
   const toMm = (svgVal: number) => svgVal / model.svgUnitsPerMm;
 
@@ -79,13 +108,14 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
     rectangle({ size: [boardW, boardH], center: [boardCx, boardCy] })
   );
 
-  // Subtract drill holes
+  // Subtract drill holes.
+  // cylinder() is Z-centered, so translate center to t/2 so it spans -0.05 to t+0.05.
   for (const pad of pads) {
     const cx = toMm(pad.cx);
     const cy = -toMm(pad.cy);
     const r = toMm(pad.drillRadius);
     const drillCyl = translate(
-      [cx, cy, -0.05],
+      [cx, cy, t / 2],
       cylinder({ radius: r, height: t + 0.1, segments })
     );
     boardSolid = subtract(boardSolid, drillCyl);
@@ -123,8 +153,14 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
     presss.push(subtract(padDisc, drillHole));
   }
 
+  // Groundfill: extrude each groundplane polygon as a thin press layer
+  for (const gf of model.groundFills) {
+    const solid = makeGroundFillSolid(gf, th, t, toMm);
+    if (solid !== null) presss.push(solid);
+  }
+
   if (presss.length === 0) {
-    throw new Error('No traces or pads found — nothing to put in press STL');
+    throw new Error('No traces, pads, or groundfill found — nothing to put in press STL');
   }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const pressSolid: any = presss.length === 1

@@ -1,4 +1,4 @@
-import type { BoardModel, Pad, Trace, FootprintCircle, Rect } from './types.js';
+import type { BoardModel, Pad, Trace, FootprintCircle, Rect, GroundFill } from './types.js';
 import type { PrinterOptions } from './types.js';
 import { DOMParser } from '@xmldom/xmldom';
 import { identity, multiply, applyToPoint, parseSvgTransform } from './transform.js';
@@ -217,6 +217,101 @@ function walkGroup(
   }
 }
 
+/**
+ * Parse an SVG path `d` string containing only M, L, Z commands (as Fritzing exports)
+ * into an array of contours. Each contour is a closed list of [x,y] points.
+ * The accumulated transform is applied to each point.
+ */
+function parseSvgPathToContours(d: string, transform: Matrix3): Array<[number, number][]> {
+  const contours: Array<[number, number][]> = [];
+  let current: [number, number][] = [];
+
+  // Tokenise: split on command letters, keeping the letter
+  const tokens = d.trim().split(/(?=[MmLlHhVvZz])/);
+
+  for (const token of tokens) {
+    if (!token.trim()) continue;
+    const cmd = token[0];
+    const nums = token.slice(1).trim().split(/[\s,]+/).filter(Boolean).map(Number);
+
+    if (cmd === 'M' || cmd === 'm') {
+      // Start a new sub-path
+      if (current.length > 0) contours.push(current);
+      current = [];
+      // Remaining pairs after the first are implicit L/l commands
+      for (let i = 0; i + 1 < nums.length; i += 2) {
+        const [tx, ty] = applyToPoint(transform, nums[i], nums[i + 1]);
+        current.push([tx, ty]);
+      }
+    } else if (cmd === 'L') {
+      for (let i = 0; i + 1 < nums.length; i += 2) {
+        const [tx, ty] = applyToPoint(transform, nums[i], nums[i + 1]);
+        current.push([tx, ty]);
+      }
+    } else if (cmd === 'l') {
+      // Relative lineto — need current position
+      let [cx, cy] = current.length > 0 ? current[current.length - 1] : [0, 0];
+      for (let i = 0; i + 1 < nums.length; i += 2) {
+        // Undo transform to get pre-transform position, add delta, re-transform
+        // Simpler: track pre-transform cursor separately
+        // Since we process absolute coords after transform, relative needs pre-transform cursor
+        // We'll keep a raw cursor for relative commands
+        cx += nums[i]; cy += nums[i + 1];
+        const [tx, ty] = applyToPoint(transform, cx, cy);
+        current.push([tx, ty]);
+      }
+    } else if (cmd === 'Z' || cmd === 'z') {
+      if (current.length > 0) {
+        contours.push(current);
+        current = [];
+      }
+    }
+    // H, V, C, Q, A not expected from Fritzing exports; silently skip
+  }
+  if (current.length > 0) contours.push(current);
+  return contours;
+}
+
+/**
+ * Collect groundplane paths from a <g id="groundplane"> element and its subtree.
+ * The element's own transform (if any) should already be incorporated into `transform`.
+ */
+function collectGroundFills(
+  node: Element,
+  transform: Matrix3,
+  groundFills: GroundFill[],
+): void {
+  const id = node.getAttribute('id') ?? '';
+  const isGroundplane = id.toLowerCase() === 'groundplane';
+  const nodeTransform = computeTransform(node, transform);
+
+  if (isGroundplane) {
+    // Collect all <path> children
+    const children = node.childNodes;
+    for (let i = 0; i < children.length; i++) {
+      const child = children[i] as Element;
+      if (child.nodeType !== 1 || child.tagName !== 'path') continue;
+      const d = child.getAttribute('d');
+      if (!d) continue;
+      const fill = child.getAttribute('fill') ?? '#f9a435';
+      const contours = parseSvgPathToContours(d, nodeTransform);
+      if (contours.length > 0) {
+        groundFills.push({ contours, color: fill });
+      }
+    }
+    return;
+  }
+
+  // Recurse into child groups
+  const children = node.childNodes;
+  for (let i = 0; i < children.length; i++) {
+    const child = children[i] as Element;
+    if (child.nodeType === 1 && child.tagName === 'g') {
+      collectGroundFills(child, nodeTransform, groundFills);
+    }
+  }
+}
+
 /** Deduplicate pads: if two pad centres are within 0.1 SVG units, keep one. */
 function deduplicatePads(pads: Pad[]): Pad[] {
   const result: Pad[] = [];
@@ -254,6 +349,7 @@ export function parseFritzingSvg(svgSource: string, options: PrinterOptions): Bo
   const traces: Trace[] = [];
   const pads: Pad[] = [];
   const footprintCircles: FootprintCircle[] = [];
+  const groundFills: GroundFill[] = [];
   const boardRect: { value: Rect | null } = { value: null };
 
   const rootTransform = identity();
@@ -262,9 +358,9 @@ export function parseFritzingSvg(svgSource: string, options: PrinterOptions): Bo
   const children = svgEl.childNodes;
   for (let i = 0; i < children.length; i++) {
     const child = children[i] as Element;
-    if (child.nodeType === 1 && child.tagName === 'g') {
-      walkGroup(child, rootTransform, svgUnitsPerMm, options, traces, pads, footprintCircles, boardRect);
-    }
+    if (child.nodeType !== 1 || child.tagName !== 'g') continue;
+    walkGroup(child, rootTransform, svgUnitsPerMm, options, traces, pads, footprintCircles, boardRect);
+    collectGroundFills(child, rootTransform, groundFills);
   }
 
   const dedupedPads = deduplicatePads(pads);
@@ -275,5 +371,6 @@ export function parseFritzingSvg(svgSource: string, options: PrinterOptions): Bo
     traces,
     pads: dedupedPads,
     footprintCircles,
+    groundFills,
   };
 }

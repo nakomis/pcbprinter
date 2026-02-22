@@ -9,6 +9,18 @@ export interface BoardModel {
   pads: Pad[];
   /** fill="none" circles kept for SVG visual reference only — not printed. */
   footprintCircles: FootprintCircle[];
+  /** Copper groundfill shapes — each is a list of contours (outer + holes) in absolute SVG units. */
+  groundFills: GroundFill[];
+}
+
+/**
+ * A copper groundfill region from a <g id="groundplane"> element.
+ * contours[0] is the outer boundary; contours[1..] are holes (if any).
+ * All points in absolute SVG user units.
+ */
+export interface GroundFill {
+  contours: Array<[number, number][]>;
+  color: string;
 }
 
 export interface Rect {

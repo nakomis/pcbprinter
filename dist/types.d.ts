@@ -1,0 +1,63 @@
+/** All coordinates are in absolute SVG user units throughout the internal model.
+ *  Conversion to mm happens only in stlWriter. */
+export interface BoardModel {
+    /** How many SVG user units equal 1 mm (derived from viewBox vs physical size). */
+    svgUnitsPerMm: number;
+    boardRect: Rect;
+    traces: Trace[];
+    pads: Pad[];
+    /** fill="none" circles kept for SVG visual reference only — not printed. */
+    footprintCircles: FootprintCircle[];
+    /** Copper groundfill shapes — each is a list of contours (outer + holes) in absolute SVG units. */
+    groundFills: GroundFill[];
+}
+/**
+ * A copper groundfill region from a <g id="groundplane"> element.
+ * contours[0] is the outer boundary; contours[1..] are holes (if any).
+ * All points in absolute SVG user units.
+ */
+export interface GroundFill {
+    contours: Array<[number, number][]>;
+    color: string;
+}
+export interface Rect {
+    x: number;
+    y: number;
+    w: number;
+    h: number;
+}
+export interface Trace {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+    /** Stroke width in SVG user units. */
+    strokeWidth: number;
+    color: string;
+}
+export interface Pad {
+    cx: number;
+    cy: number;
+    /** Radius of the drill hole in SVG user units. */
+    drillRadius: number;
+    /** Radius of the annular copper pad in SVG user units (= trace half-width). */
+    padRadius: number;
+    color: string;
+}
+export interface FootprintCircle {
+    cx: number;
+    cy: number;
+    r: number;
+}
+export interface PrinterOptions {
+    outDir: string;
+    writeSvg: boolean;
+    boardColor: string;
+    boardThicknessMm: number;
+    traceHeightMm: number;
+    traceRecessMm: number;
+    drillDiameterMm: number;
+    snapToleranceMm: number;
+    traceSegments: number;
+}
+export declare const DEFAULT_OPTIONS: PrinterOptions;
