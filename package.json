@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "description": "Convert Fritzing PCB SVG exports to 3D-printable STL files",
   "type": "module",
-  "bin": { "pcbprinter": "./dist/cli.js" },
+  "bin": {
+    "pcbprinter": "./dist/cli.js"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "ts-node --esm src/cli.ts",
@@ -16,6 +18,7 @@
     "@xmldom/xmldom": "^0.8.10",
     "chalk": "^5.3.0",
     "commander": "^12.1.0",
+    "manifold-3d": "^3.3.2",
     "xpath": "^0.0.34"
   },
   "devDependencies": {
