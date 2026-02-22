@@ -53,8 +53,11 @@ export interface PrinterOptions {
   writeSvg: boolean;
   boardColor: string;
   boardThicknessMm: number;
-  traceHeightMm: number;
   traceRecessMm: number;
+  /** How much narrower (total, in mm) press bumps are vs pcb channels. */
+  traceClearanceMm: number;
+  /** Thickness of the solid press backing plate in mm. */
+  pressThicknessMm: number;
   drillDiameterMm: number;
   snapToleranceMm: number;
   traceSegments: number;
@@ -65,8 +68,9 @@ export const DEFAULT_OPTIONS: PrinterOptions = {
   writeSvg: false,
   boardColor: '#03A550',
   boardThicknessMm: 1.6,
-  traceHeightMm: 0.2,
-  traceRecessMm: 0,
+  traceRecessMm: 0.4,
+  traceClearanceMm: 0.6,
+  pressThicknessMm: 15,
   drillDiameterMm: 1.0,
   snapToleranceMm: 1.5,
   traceSegments: 32,

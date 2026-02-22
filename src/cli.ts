@@ -19,8 +19,9 @@ program
   .option('--svg', 'Also write intermediate SVG', false)
   .option('--board-color <hex>', 'SVG substrate colour', DEFAULT_OPTIONS.boardColor)
   .option('--board-thickness <mm>', 'STL board thickness in mm', String(DEFAULT_OPTIONS.boardThicknessMm))
-  .option('--trace-height <mm>', 'STL press trace extrusion height in mm', String(DEFAULT_OPTIONS.traceHeightMm))
-  .option('--trace-recess <mm>', 'Depth of channels routed into pcb for trace registration; 0 = flat pcb', String(DEFAULT_OPTIONS.traceRecessMm))
+  .option('--trace-recess <mm>', 'Depth of trace channels in pcb (= bump height on press)', String(DEFAULT_OPTIONS.traceRecessMm))
+  .option('--trace-clearance <mm>', 'How much narrower press bumps are vs pcb channels', String(DEFAULT_OPTIONS.traceClearanceMm))
+  .option('--press-thickness <mm>', 'Thickness of press backing plate in mm', String(DEFAULT_OPTIONS.pressThicknessMm))
   .option('--drill-diameter <mm>', 'Drill hole diameter in mm', String(DEFAULT_OPTIONS.drillDiameterMm))
   .option('--snap-tolerance <mm>', 'Max distance to snap trace end to pad centre in mm', String(DEFAULT_OPTIONS.snapToleranceMm))
   .option('--trace-segments <n>', 'Circle segments for rounded trace ends', String(DEFAULT_OPTIONS.traceSegments))
@@ -41,8 +42,9 @@ program
       writeSvg: opts.svg,
       boardColor: opts.boardColor,
       boardThicknessMm: parseFloat(opts.boardThickness),
-      traceHeightMm: parseFloat(opts.traceHeight),
       traceRecessMm: parseFloat(opts.traceRecess),
+      traceClearanceMm: parseFloat(opts.traceClearance),
+      pressThicknessMm: parseFloat(opts.pressThickness),
       drillDiameterMm: parseFloat(opts.drillDiameter),
       snapToleranceMm: parseFloat(opts.snapTolerance),
       traceSegments: parseInt(opts.traceSegments, 10),

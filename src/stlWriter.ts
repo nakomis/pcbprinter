@@ -22,53 +22,58 @@ function concatBuffers(chunks: ArrayBuffer[]): ArrayBuffer {
 }
 
 function toArrayBuffer(serialized: ArrayBuffer | ArrayBuffer[]): ArrayBuffer {
-  if (serialized instanceof ArrayBuffer) {
-    return serialized;
-  }
+  if (serialized instanceof ArrayBuffer) return serialized;
   return concatBuffers(serialized);
 }
 
+/**
+ * Build a rounded-rectangle solid for a trace.
+ * halfWidthMm: half the width of the trace in mm (may be reduced for clearance).
+ * heightMm: extrusion height.
+ * zOffsetMm: z position of the BOTTOM face of the solid.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeTraceSolid(
   trace: Trace,
+  halfWidthMm: number,
   heightMm: number,
   zOffsetMm: number,
   toMm: (v: number) => number,
-  segments: number
+  segments: number,
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ): any {
   const x1 = toMm(trace.x1), y1 = -toMm(trace.y1);
   const x2 = toMm(trace.x2), y2 = -toMm(trace.y2);
-  const h = toMm(trace.strokeWidth) / 2;
+  const h = halfWidthMm;
 
   const dx = x2 - x1, dy = y2 - y1;
   const len = Math.hypot(dx, dy);
   const angle = Math.atan2(dy, dx);
   const midX = (x1 + x2) / 2, midY = (y1 + y2) / 2;
-  const z = zOffsetMm + heightMm / 2;
+  const zCenter = zOffsetMm + heightMm / 2;
 
   if (len < 1e-9) {
-    return translate([x1, y1, z], cylinder({ radius: h, height: heightMm, segments }));
+    return translate([x1, y1, zCenter], cylinder({ radius: h, height: heightMm, segments }));
   }
 
   const bar = translate(
-    [midX, midY, z],
+    [midX, midY, zCenter],
     rotate([0, 0, angle], cuboid({ size: [len, h * 2, heightMm] }))
   );
-  const capA = translate([x1, y1, z], cylinder({ radius: h, height: heightMm, segments }));
-  const capB = translate([x2, y2, z], cylinder({ radius: h, height: heightMm, segments }));
+  const capA = translate([x1, y1, zCenter], cylinder({ radius: h, height: heightMm, segments }));
+  const capB = translate([x2, y2, zCenter], cylinder({ radius: h, height: heightMm, segments }));
   return union(bar, capA, capB);
 }
 
 /**
- * Extrude a groundfill polygon into a JSCAD solid at height zOffset, thickness heightMm.
- * contours[0] = outer boundary, contours[1..] = holes (even-odd rule via JSCAD polygon paths).
+ * Extrude a groundfill polygon.
+ * contours[0] = outer boundary, contours[1..] = holes.
  * Returns null if the polygon has no usable points.
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeGroundFillSolid(gf: GroundFill, heightMm: number, zOffset: number, toMm: (v: number) => number): any | null {
   if (gf.contours.length === 0) return null;
 
-  // Flatten all contour points into a single points array; build paths (index ranges) for each contour
   const allPoints: [number, number][] = [];
   const paths: number[][] = [];
 
@@ -78,8 +83,7 @@ function makeGroundFillSolid(gf: GroundFill, heightMm: number, zOffset: number, 
     for (const [x, y] of contour) {
       allPoints.push([toMm(x), -toMm(y)]); // negate Y: SVG Y-down → JSCAD Y-up
     }
-    const indices = Array.from({ length: contour.length }, (_, i) => start + i);
-    paths.push(indices);
+    paths.push(Array.from({ length: contour.length }, (_, i) => start + i));
   }
 
   if (allPoints.length < 3) return null;
@@ -93,7 +97,9 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
 
   const { boardRect, traces, pads } = model;
   const t = options.boardThicknessMm;
-  const th = options.traceHeightMm;
+  const recess = options.traceRecessMm;
+  const clearance = options.traceClearanceMm;
+  const pressT = options.pressThicknessMm;
   const segments = options.traceSegments;
 
   const boardW = toMm(boardRect.w);
@@ -101,77 +107,79 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
   const boardCx = toMm(boardRect.x) + boardW / 2;
   const boardCy = -(toMm(boardRect.y) + boardH / 2);
 
-  // Build pcb board solid
+  // ── PCB ──────────────────────────────────────────────────────────────────
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let boardSolid: any = extrudeLinear(
     { height: t },
     rectangle({ size: [boardW, boardH], center: [boardCx, boardCy] })
   );
 
-  // Subtract drill holes.
-  // cylinder() is Z-centered, so translate center to t/2 so it spans -0.05 to t+0.05.
+  // Drill holes: cylinder is Z-centred, so translate to t/2 to span 0..t fully.
   for (const pad of pads) {
     const cx = toMm(pad.cx);
     const cy = -toMm(pad.cy);
     const r = toMm(pad.drillRadius);
-    const drillCyl = translate(
-      [cx, cy, t / 2],
-      cylinder({ radius: r, height: t + 0.1, segments })
+    boardSolid = subtract(boardSolid,
+      translate([cx, cy, t / 2], cylinder({ radius: r, height: t + 0.1, segments }))
     );
-    boardSolid = subtract(boardSolid, drillCyl);
   }
 
-  // Optionally recess trace channels into board
-  if (options.traceRecessMm > 0) {
+  // Trace channels recessed from the top face.
+  if (recess > 0) {
     for (const trace of traces) {
-      const channel = makeTraceSolid(trace, options.traceRecessMm, t - options.traceRecessMm, toMm, segments);
+      const hw = toMm(trace.strokeWidth) / 2;
+      const channel = makeTraceSolid(trace, hw, recess, t - recess, toMm, segments);
       boardSolid = subtract(boardSolid, channel);
     }
   }
 
-  // Build press solid (traces + pads on top of board)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const presss: any[] = [];
+  // ── PRESS ─────────────────────────────────────────────────────────────
+  //
+  // Geometry (z=0 = pressing face, bumps point downward when flipped for use):
+  //
+  //   z = pressT + recess  ┐
+  //                            │  bumps (trace-width - clearance, height = recess)
+  //   z = pressT           ┤  ← bottom face of backing plate / top of bumps
+  //                            │
+  //   z = 0                    ┘  ← top face of backing plate (print-bed side)
+  //
+  // To use: flip the press so bumps face down, align over pcb, press in.
 
-  for (const trace of traces) {
-    presss.push(makeTraceSolid(trace, th, t, toMm, segments));
+  // Backing plate (board footprint, full pressT height).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let pressSolid: any = extrudeLinear(
+    { height: pressT },
+    rectangle({ size: [boardW, boardH], center: [boardCx, boardCy] })
+  );
+
+  // Bumps protruding from the bottom face (z = pressT) of the backing plate.
+  if (recess > 0) {
+    for (const trace of traces) {
+      const hw = Math.max(0.1, toMm(trace.strokeWidth) / 2 - clearance / 2);
+      const bump = makeTraceSolid(trace, hw, recess, pressT, toMm, segments);
+      pressSolid = union(pressSolid, bump);
+    }
   }
 
+  // Clearance holes through the press at each pad position so the drill pins
+  // pass through cleanly when pressing.
   for (const pad of pads) {
     const cx = toMm(pad.cx);
     const cy = -toMm(pad.cy);
-    const pr = toMm(pad.padRadius);
-    const dr = toMm(pad.drillRadius);
-    const padDisc = translate(
-      [cx, cy, t + th / 2],
-      cylinder({ radius: pr, height: th, segments })
+    const r = toMm(pad.drillRadius);
+    pressSolid = subtract(pressSolid,
+      translate([cx, cy, pressT / 2],
+        cylinder({ radius: r, height: pressT + recess + 0.1, segments })
+      )
     );
-    const drillHole = translate(
-      [cx, cy, t - 0.05],
-      cylinder({ radius: dr, height: th + 0.1, segments })
-    );
-    presss.push(subtract(padDisc, drillHole));
   }
-
-  // Groundfill: extrude each groundplane polygon as a thin press layer
-  for (const gf of model.groundFills) {
-    const solid = makeGroundFillSolid(gf, th, t, toMm);
-    if (solid !== null) presss.push(solid);
-  }
-
-  if (presss.length === 0) {
-    throw new Error('No traces, pads, or groundfill found — nothing to put in press STL');
-  }
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const pressSolid: any = presss.length === 1
-    ? presss[0]
-    : union(...presss);
 
   const pcbArr = serialize({ binary: true }, boardSolid) as ArrayBuffer | ArrayBuffer[];
   const pressArr = serialize({ binary: true }, pressSolid) as ArrayBuffer | ArrayBuffer[];
 
-  const pcb = toArrayBuffer(pcbArr);
-  const press = toArrayBuffer(pressArr);
-
-  return { pcb, press };
+  return {
+    pcb: toArrayBuffer(pcbArr),
+    press: toArrayBuffer(pressArr),
+  };
 }
