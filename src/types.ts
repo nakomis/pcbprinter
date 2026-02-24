@@ -56,6 +56,8 @@ export interface PrinterOptions {
   traceRecessMm: number;
   /** How much narrower (total, in mm) press bumps are vs pcb channels. */
   traceClearanceMm: number;
+  /** Width of the chamfer step at the top of each press bump (0 = no chamfer). */
+  bumpChamferMm: number;
   /** Thickness of the solid press backing plate in mm. */
   pressThicknessMm: number;
   drillDiameterMm: number;
@@ -68,8 +70,9 @@ export const DEFAULT_OPTIONS: PrinterOptions = {
   writeSvg: false,
   boardColor: '#03A550',
   boardThicknessMm: 3,
-  traceRecessMm: 0.4,
-  traceClearanceMm: 0.4,
+  traceRecessMm: 0.6,
+  traceClearanceMm: 0.1,
+  bumpChamferMm: 0.2,
   pressThicknessMm: 10,
   drillDiameterMm: 1.3,
   snapToleranceMm: 1.5,

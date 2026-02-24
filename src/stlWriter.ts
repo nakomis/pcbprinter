@@ -102,8 +102,21 @@ function buildChannelFootprint2D(
   return footprint;
 }
 
-export async function buildStls(model: BoardModel, options: PrinterOptions): Promise<StlOutputs> {
-  const wasm = await initManifold();
+export interface ManifoldInitOptions {
+  /** Override WASM file location — useful in browsers where the WASM is served
+   *  from a known path (e.g. your app's public dir).
+   *  Example: `locateFile: (f) => '/manifold.wasm'`
+   */
+  locateFile?: (fileName: string) => string;
+}
+
+export async function buildStls(
+  model: BoardModel,
+  options: PrinterOptions,
+  initOptions?: ManifoldInitOptions,
+): Promise<StlOutputs> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const wasm = await initManifold(initOptions as any ?? {});
   wasm.setup();
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const M = (wasm as any).Manifold;
@@ -189,7 +202,9 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let press: any = CS.square([boardW, boardH], true).translate([boardCx, boardCy]).extrude(pressT);
 
-  // Bump solid: 2D footprint extruded, embedded eps into the plate
+  // Bump solid: 2D footprint extruded, embedded eps into the plate.
+  // If bumpChamferMm > 0 a stepped chamfer is added: the top cap is inset by
+  // chamferH on all sides, creating a knife-edge that can score copper foil.
   if (recess > 0) {
     const bumpFootprint = buildChannelFootprint2D(
       CS, traces, groundFills,
@@ -197,16 +212,34 @@ export async function buildStls(model: BoardModel, options: PrinterOptions): Pro
       toMm, segments,
     );
     if (bumpFootprint) {
-      const bumpSolid = bumpFootprint
-        .extrude(recess + eps)
-        .translate([0, 0, pressT - eps]);
-      press = press.add(bumpSolid);
+      const chamferH = Math.min(options.bumpChamferMm ?? 0, recess * 0.8);
+      if (chamferH <= 0) {
+        // No chamfer — original single extrusion
+        const bumpSolid = bumpFootprint
+          .extrude(recess + eps)
+          .translate([0, 0, pressT - eps]);
+        press = press.add(bumpSolid);
+      } else {
+        // Two-part stepped chamfer:
+        //   Main body: full width,  z = pressT-eps  to  z = pressT + recess - chamferH
+        //   Top cap:   inset by chamferH,  z = pressT + recess - chamferH  to  z = pressT + recess
+        const mainBody = bumpFootprint
+          .extrude(recess - chamferH + eps)
+          .translate([0, 0, pressT - eps]);
+        const topFootprint = bumpFootprint.offset(-chamferH);
+        const topCap = topFootprint
+          .extrude(chamferH + eps)
+          .translate([0, 0, pressT + recess - chamferH - eps]);
+        press = press.add(mainBody).add(topCap);
+      }
     }
   }
 
   // Alignment pins: cylinders embedded eps below the plate top so there is no
   // coplanar face between the pin pcb and the press top surface.
-  const pinHeight = 2.0;
+  // Pins must be taller than the bumps so they engage the drill holes before
+  // the bumps contact the copper foil, providing alignment before pressing.
+  const pinHeight = recess + 0.5;
   for (const pad of pads) {
     const cx = toMm(pad.cx);
     const cy = -toMm(pad.cy);
