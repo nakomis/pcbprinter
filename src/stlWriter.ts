@@ -316,10 +316,15 @@ export async function buildStls(
         const contours = textToContours(font, label, model.svgUnitsPerMm);
         if (contours.length === 0) continue;
         try {
+          // Reverse each contour: opentype.js y-flip leaves outer contours CCW in
+          // manifold space, but manifold's CrossSection treats CW as filled (outer).
+          // Reversing swaps CCW→CW (outer→filled) and CW→CCW (hole→hole), so the
+          // extrusion has correct outward normals and board.add() raises the text.
+          const reversed = contours.map(c => c.slice().reverse());
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const textCS = new (CS as any)(contours, 'EvenOdd') as typeof CS;
+          const textCS = new (CS as any)(reversed, 'EvenOdd') as typeof CS;
           board = board.add(
-            textCS.extrude(options.textReliefMm).translate([0, 0, t]),
+            textCS.extrude(options.textReliefMm + eps).translate([0, 0, t - eps]),
           );
         } catch { /* skip degenerate glyph */ }
       }
