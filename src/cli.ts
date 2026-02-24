@@ -24,7 +24,7 @@ program
   .option('--trace-clearance <mm>', 'How much narrower press bumps are vs pcb channels', String(DEFAULT_OPTIONS.traceClearanceMm))
   .option('--bump-chamfer <mm>', 'Chamfer step width at top of press bumps (0 = none)', String(DEFAULT_OPTIONS.bumpChamferMm))
   .option('--press-thickness <mm>', 'Thickness of press backing plate in mm', String(DEFAULT_OPTIONS.pressThicknessMm))
-  .option('--finger-indent <mm>', 'Radius of finger-indent cutouts on press sides (0 = none)', String(DEFAULT_OPTIONS.fingerIndentMm))
+  .option('--finger-indent <mm>', 'Depth (sagitta) of finger-indent notch on each press side, chord fixed at 20mm (0 = none)', String(DEFAULT_OPTIONS.fingerIndentMm))
   .option('--drill-diameter <mm>', 'Drill hole diameter in mm', String(DEFAULT_OPTIONS.drillDiameterMm))
   .option('--snap-tolerance <mm>', 'Max distance to snap trace end to pad centre in mm', String(DEFAULT_OPTIONS.snapToleranceMm))
   .option('--trace-segments <n>', 'Circle segments for rounded trace ends', String(DEFAULT_OPTIONS.traceSegments))
