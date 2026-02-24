@@ -1,4 +1,4 @@
-import type { BoardModel, PrinterOptions, Trace, GroundFill } from './types.js';
+import type { BoardModel, PrinterOptions, Trace, Pad, GroundFill } from './types.js';
 import initManifold from 'manifold-3d';
 
 export interface StlOutputs { pcb: ArrayBuffer; press: ArrayBuffer; }
@@ -100,6 +100,59 @@ function buildChannelFootprint2D(
   }
 
   return footprint;
+}
+
+/** Minimum distance from point (px,py) to line segment (ax,ay)-(bx,by). */
+function ptSegDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+  const dx = bx - ax, dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-12) return Math.hypot(px - ax, py - ay);
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  return Math.hypot(px - ax - t * dx, py - ay - t * dy);
+}
+
+// Half-chord length for finger-indent notches (chord = 20 mm).
+const INDENT_HALF_CHORD = 10;
+
+/**
+ * Maximum safe sagitta (notch depth) for a minor-segment finger indent whose
+ * 20 mm chord lies along the board edge at (edgeCx, edgeCy).
+ * inDirX/inDirY is the unit vector pointing INTO the plate from that edge.
+ * Uses binary search: circle centre moves outside the plate as sagitta shrinks.
+ */
+function maxSafeSagitta(
+  edgeCx: number, edgeCy: number,
+  inDirX: number, inDirY: number,
+  traces: Trace[], pads: Pad[],
+  toMm: (v: number) => number,
+  clearance: number,
+  padding: number,
+  maxSag: number,
+): number {
+  const hc = INDENT_HALF_CHORD;
+  const safe = (s: number): boolean => {
+    if (s <= 0) return true;
+    const r = (hc * hc + s * s) / (2 * s);
+    const d = r - s; // distance of circle centre outside the edge
+    const ccx = edgeCx - d * inDirX;
+    const ccy = edgeCy - d * inDirY;
+    for (const trace of traces) {
+      const bumpR = Math.max(0.1, toMm(trace.strokeWidth) / 2 - clearance / 2);
+      if (ptSegDist(ccx, ccy, toMm(trace.x1), -toMm(trace.y1), toMm(trace.x2), -toMm(trace.y2)) < r + bumpR + padding) return false;
+    }
+    for (const pad of pads) {
+      const pinR = Math.max(0.2, toMm(pad.drillRadius) - 0.15);
+      if (Math.hypot(toMm(pad.cx) - ccx, -toMm(pad.cy) - ccy) < r + pinR + padding) return false;
+    }
+    return true;
+  };
+  // Binary search for the largest safe sagitta
+  let lo = 0, hi = maxSag;
+  for (let i = 0; i < 24; i++) {
+    const mid = (lo + hi) / 2;
+    if (safe(mid)) lo = mid; else hi = mid;
+  }
+  return lo;
 }
 
 export interface ManifoldInitOptions {
@@ -247,6 +300,48 @@ export async function buildStls(
     press = press.add(
       M.cylinder(pinHeight + eps, r, r, segments).translate([cx, cy, pressT - eps])
     );
+  }
+
+  // Finger-indent cutouts: minor circular segment notches (chord = 20 mm) on
+  // each side of the press so it can be levered off the pcb.  The circle
+  // centre sits OUTSIDE the plate; sagitta (depth) is auto-calculated per side
+  // as the max that keeps 1 mm clearance from every bump/pin, capped at
+  // fingerIndentMm (the global max).
+  const indentMax = options.fingerIndentMm ?? 0;
+  if (indentMax > 0) {
+    const PADDING = 1.0;
+    const hc = INDENT_HALF_CHORD;
+    const sideSag = (ex: number, ey: number, dx: number, dy: number) =>
+      maxSafeSagitta(ex, ey, dx, dy, traces, pads, toMm, clearance, PADDING, indentMax);
+    const makeIndentCyl = (s: number) => {
+      const r = (hc * hc + s * s) / (2 * s);
+      return M.cylinder(pressT + 2 * eps, r, r, segments).translate([0, 0, -eps]);
+    };
+
+    // Left edge — into-plate direction is +x
+    const leftS = sideSag(boardCx - boardW / 2, boardCy, 1, 0);
+    if (leftS > 0) {
+      const d = (hc * hc + leftS * leftS) / (2 * leftS) - leftS;
+      press = press.subtract(makeIndentCyl(leftS).translate([boardCx - boardW / 2 - d, boardCy, 0]));
+    }
+    // Right edge — into-plate direction is -x
+    const rightS = sideSag(boardCx + boardW / 2, boardCy, -1, 0);
+    if (rightS > 0) {
+      const d = (hc * hc + rightS * rightS) / (2 * rightS) - rightS;
+      press = press.subtract(makeIndentCyl(rightS).translate([boardCx + boardW / 2 + d, boardCy, 0]));
+    }
+    // Front edge — into-plate direction is +y
+    const frontS = sideSag(boardCx, boardCy - boardH / 2, 0, 1);
+    if (frontS > 0) {
+      const d = (hc * hc + frontS * frontS) / (2 * frontS) - frontS;
+      press = press.subtract(makeIndentCyl(frontS).translate([boardCx, boardCy - boardH / 2 - d, 0]));
+    }
+    // Back edge — into-plate direction is -y
+    const backS = sideSag(boardCx, boardCy + boardH / 2, 0, -1);
+    if (backS > 0) {
+      const d = (hc * hc + backS * backS) / (2 * backS) - backS;
+      press = press.subtract(makeIndentCyl(backS).translate([boardCx, boardCy + boardH / 2 + d, 0]));
+    }
   }
 
   // Mirror around x = boardCx: translate to origin, mirror YZ plane, translate back.

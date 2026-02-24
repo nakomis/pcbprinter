@@ -60,6 +60,9 @@ export interface PrinterOptions {
   bumpChamferMm: number;
   /** Thickness of the solid press backing plate in mm. */
   pressThicknessMm: number;
+  /** Depth (sagitta) of the finger-indent notch on each side of the press in mm (0 = none).
+   *  Chord is fixed at 20 mm; this controls how far the arc cuts into the plate. */
+  fingerIndentMm: number;
   drillDiameterMm: number;
   snapToleranceMm: number;
   traceSegments: number;
@@ -74,6 +77,7 @@ export const DEFAULT_OPTIONS: PrinterOptions = {
   traceClearanceMm: 0.1,
   bumpChamferMm: 0.2,
   pressThicknessMm: 10,
+  fingerIndentMm: 4,
   drillDiameterMm: 1.3,
   snapToleranceMm: 1.5,
   traceSegments: 32,
