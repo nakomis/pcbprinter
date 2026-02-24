@@ -84,8 +84,10 @@ export interface PrinterOptions {
   fingerIndentMm: number;
   /** Height of raised text relief on pcb top face in mm (0 = no text). */
   textReliefMm: number;
-  /** Path to a TTF/OTF font file for text rendering (Node.js only; defaults to system monospace). */
+  /** Path to a TTF/OTF font file for text rendering (CLI only; resolved before calling buildStls). */
   fontPath?: string;
+  /** Pre-loaded font binary data for text rendering (pass ArrayBuffer from any source). */
+  fontData?: ArrayBuffer;
   drillDiameterMm: number;
   snapToleranceMm: number;
   traceSegments: number;

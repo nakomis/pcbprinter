@@ -158,31 +158,9 @@ function maxSafeSagitta(
 
 // ── TEXT RENDERING ────────────────────────────────────────────────────────────
 
-/** Try to locate a system monospace TTF (macOS → Linux → Windows). */
-const SYSTEM_FONT_CANDIDATES = [
-  '/System/Library/Fonts/Monaco.ttf',
-  '/System/Library/Fonts/SFNSMono.ttf',
-  '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
-  '/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf',
-  'C:\\Windows\\Fonts\\consola.ttf',
-  'C:\\Windows\\Fonts\\cour.ttf',
-];
-
-/** Load a font from a file path (Node.js only — returns null in browser). */
-async function loadFont(fontPath?: string): Promise<ReturnType<typeof opentype.parse> | null> {
-  try {
-    const fs = await import('node:fs');
-    const paths = fontPath ? [fontPath] : SYSTEM_FONT_CANDIDATES;
-    for (const p of paths) {
-      try {
-        if (!fs.existsSync(p)) continue;
-        const buf = fs.readFileSync(p);
-        const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
-        return opentype.parse(ab as ArrayBuffer);
-      } catch { /* bad file, try next */ }
-    }
-  } catch { /* no fs — browser env */ }
-  return null;
+/** Parse a font from an ArrayBuffer (works in both Node.js and browser). */
+function parseFont(data: ArrayBuffer): ReturnType<typeof opentype.parse> | null {
+  try { return opentype.parse(data); } catch { return null; }
 }
 
 const BEZIER_STEPS = 8;
@@ -332,7 +310,7 @@ export async function buildStls(
   // Uses EvenOdd fill so letter holes (O, 0, etc.) render correctly.
   const textLabels = model.textLabels ?? [];
   if (options.textReliefMm > 0 && textLabels.length > 0) {
-    const font = await loadFont(options.fontPath);
+    const font = options.fontData ? parseFont(options.fontData) : null;
     if (font) {
       for (const label of textLabels) {
         const contours = textToContours(font, label, model.svgUnitsPerMm);

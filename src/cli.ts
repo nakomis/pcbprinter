@@ -89,6 +89,35 @@ program
       console.log(chalk.green('✓') + ` SVG  → ${svgOut}`);
     }
 
+    // Load font for text relief (CLI has fs access; browser callers supply fontData directly)
+    if (options.textReliefMm > 0) {
+      const SYSTEM_FONT_CANDIDATES = [
+        '/System/Library/Fonts/Monaco.ttf',
+        '/System/Library/Fonts/Menlo.ttc',
+        '/System/Library/Fonts/SFNSMono.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
+        '/usr/share/fonts/TTF/DejaVuSansMono.ttf',
+        'C:\\Windows\\Fonts\\consola.ttf',
+        'C:\\Windows\\Fonts\\cour.ttf',
+      ];
+      const fontCandidates = options.fontPath ? [options.fontPath] : SYSTEM_FONT_CANDIDATES;
+      let loaded = false;
+      for (const p of fontCandidates) {
+        if (fs.existsSync(p)) {
+          try {
+            const buf = fs.readFileSync(p);
+            options.fontData = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+            console.log(chalk.green('✓') + ` font       → ${p}`);
+            loaded = true;
+            break;
+          } catch { /* try next */ }
+        }
+      }
+      if (!loaded) {
+        console.warn(chalk.yellow('⚠') + ` No font found — text relief will be skipped. Use --font-path to specify a TTF/OTF font.`);
+      }
+    }
+
     // Build and write STLs
     let stls;
     try {
