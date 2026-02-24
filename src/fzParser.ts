@@ -228,5 +228,6 @@ export function parseFritzingFz(fzSource: string): BoardModel {
     pads,
     footprintCircles: [],
     groundFills: [],
+    textLabels: [],
   };
 }

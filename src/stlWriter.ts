@@ -1,4 +1,5 @@
-import type { BoardModel, PrinterOptions, Trace, Pad, GroundFill } from './types.js';
+import type { BoardModel, PrinterOptions, Trace, Pad, GroundFill, TextLabel } from './types.js';
+import opentype from 'opentype.js';
 import initManifold from 'manifold-3d';
 
 export interface StlOutputs { pcb: ArrayBuffer; press: ArrayBuffer; }
@@ -155,6 +156,96 @@ function maxSafeSagitta(
   return lo;
 }
 
+// ── TEXT RENDERING ────────────────────────────────────────────────────────────
+
+/** Try to locate a system monospace TTF (macOS → Linux → Windows). */
+const SYSTEM_FONT_CANDIDATES = [
+  '/System/Library/Fonts/Monaco.ttf',
+  '/System/Library/Fonts/SFNSMono.ttf',
+  '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
+  '/usr/share/fonts/truetype/liberation/LiberationMono-Regular.ttf',
+  'C:\\Windows\\Fonts\\consola.ttf',
+  'C:\\Windows\\Fonts\\cour.ttf',
+];
+
+/** Load a font from a file path (Node.js only — returns null in browser). */
+async function loadFont(fontPath?: string): Promise<ReturnType<typeof opentype.parse> | null> {
+  try {
+    const fs = await import('node:fs');
+    const paths = fontPath ? [fontPath] : SYSTEM_FONT_CANDIDATES;
+    for (const p of paths) {
+      try {
+        if (!fs.existsSync(p)) continue;
+        const buf = fs.readFileSync(p);
+        const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength);
+        return opentype.parse(ab as ArrayBuffer);
+      } catch { /* bad file, try next */ }
+    }
+  } catch { /* no fs — browser env */ }
+  return null;
+}
+
+const BEZIER_STEPS = 8;
+
+/**
+ * Convert an opentype glyph path to polygon contours in manifold mm space.
+ * The TextLabel's accumulated SVG matrix is applied to each point, then
+ * coordinates are divided by svgUnitsPerMm and y is flipped.
+ */
+function textToContours(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  font: any,
+  label: TextLabel,
+  svgUnitsPerMm: number,
+): [number, number][][] {
+  const m = label.matrix;
+  // Map a glyph local point → manifold mm
+  const toMm = (lx: number, ly: number): [number, number] => {
+    const sx = m[0] * lx + m[1] * ly + m[2]; // SVG global x
+    const sy = m[3] * lx + m[4] * ly + m[5]; // SVG global y (y-down)
+    return [sx / svgUnitsPerMm, -sy / svgUnitsPerMm]; // flip y for manifold
+  };
+
+  const path = font.getPath(label.text, label.textX, label.textY, label.fontSize);
+  const contours: [number, number][][] = [];
+  let current: [number, number][] = [];
+  let cx = 0, cy = 0;
+
+  for (const cmd of path.commands as Array<Record<string, number> & { type: string }>) {
+    if (cmd.type === 'M') {
+      if (current.length > 1) contours.push(current);
+      current = [toMm(cmd.x, cmd.y)];
+      cx = cmd.x; cy = cmd.y;
+    } else if (cmd.type === 'L') {
+      current.push(toMm(cmd.x, cmd.y));
+      cx = cmd.x; cy = cmd.y;
+    } else if (cmd.type === 'Q') {
+      for (let i = 1; i <= BEZIER_STEPS; i++) {
+        const t = i / BEZIER_STEPS, mt = 1 - t;
+        current.push(toMm(
+          mt * mt * cx + 2 * mt * t * cmd.x1 + t * t * cmd.x,
+          mt * mt * cy + 2 * mt * t * cmd.y1 + t * t * cmd.y,
+        ));
+      }
+      cx = cmd.x; cy = cmd.y;
+    } else if (cmd.type === 'C') {
+      for (let i = 1; i <= BEZIER_STEPS; i++) {
+        const t = i / BEZIER_STEPS, mt = 1 - t;
+        current.push(toMm(
+          mt*mt*mt*cx + 3*mt*mt*t*cmd.x1 + 3*mt*t*t*cmd.x2 + t*t*t*cmd.x,
+          mt*mt*mt*cy + 3*mt*mt*t*cmd.y1 + 3*mt*t*t*cmd.y2 + t*t*t*cmd.y,
+        ));
+      }
+      cx = cmd.x; cy = cmd.y;
+    } else if (cmd.type === 'Z') {
+      if (current.length > 1) contours.push(current);
+      current = [];
+    }
+  }
+  if (current.length > 1) contours.push(current);
+  return contours;
+}
+
 export interface ManifoldInitOptions {
   /** Override WASM file location — useful in browsers where the WASM is served
    *  from a known path (e.g. your app's public dir).
@@ -233,6 +324,27 @@ export async function buildStls(
         .extrude(recess + 2 * eps)
         .translate([0, 0, t - recess - eps]);
       board = board.subtract(channelSolid);
+    }
+  }
+
+  // ── TEXT RELIEF ───────────────────────────────────────────────────────────
+  // Silkscreen labels are raised above the pcb top face (z = t) by textReliefMm.
+  // Uses EvenOdd fill so letter holes (O, 0, etc.) render correctly.
+  const textLabels = model.textLabels ?? [];
+  if (options.textReliefMm > 0 && textLabels.length > 0) {
+    const font = await loadFont(options.fontPath);
+    if (font) {
+      for (const label of textLabels) {
+        const contours = textToContours(font, label, model.svgUnitsPerMm);
+        if (contours.length === 0) continue;
+        try {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const textCS = new (CS as any)(contours, 'EvenOdd') as typeof CS;
+          board = board.add(
+            textCS.extrude(options.textReliefMm).translate([0, 0, t]),
+          );
+        } catch { /* skip degenerate glyph */ }
+      }
     }
   }
 

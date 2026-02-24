@@ -1,4 +1,4 @@
-import type { BoardModel, Pad, Trace, FootprintCircle, Rect, GroundFill } from './types.js';
+import type { BoardModel, Pad, Trace, FootprintCircle, Rect, GroundFill, TextLabel } from './types.js';
 import type { PrinterOptions } from './types.js';
 import { DOMParser } from '@xmldom/xmldom';
 import { identity, multiply, applyToPoint, parseSvgTransform } from './transform.js';
@@ -312,6 +312,42 @@ function collectGroundFills(
   }
 }
 
+/**
+ * Walk the DOM collecting silkscreen text labels from <g id="silkscreenLabel"> groups.
+ * The accumulated transform through all ancestor <g> elements is passed down so that
+ * each glyph point can be mapped to SVG global coordinates by the caller.
+ */
+function collectTextLabels(
+  node: Element,
+  parentTransform: Matrix3,
+  textLabels: TextLabel[],
+): void {
+  const id = node.getAttribute('id') ?? '';
+  const transform = computeTransform(node, parentTransform);
+
+  if (id === 'silkscreenLabel') {
+    const fontSizeAttr = node.getAttribute('font-size');
+    const fontSize = fontSizeAttr ? parseFloat(fontSizeAttr) : 5;
+    for (let i = 0; i < node.childNodes.length; i++) {
+      const child = node.childNodes[i] as Element;
+      if (child.nodeType !== 1 || child.tagName !== 'text') continue;
+      const text = (child.textContent ?? '').trim();
+      if (!text) continue;
+      const textX = parseFloat(child.getAttribute('x') ?? '0');
+      const textY = parseFloat(child.getAttribute('y') ?? String(fontSize));
+      textLabels.push({ text, fontSize, textX, textY, matrix: transform });
+    }
+    return;
+  }
+
+  for (let i = 0; i < node.childNodes.length; i++) {
+    const child = node.childNodes[i] as Element;
+    if (child.nodeType === 1 && child.tagName === 'g') {
+      collectTextLabels(child, transform, textLabels);
+    }
+  }
+}
+
 /** Deduplicate pads: if two pad centres are within 0.1 SVG units, keep one. */
 function deduplicatePads(pads: Pad[]): Pad[] {
   const result: Pad[] = [];
@@ -350,6 +386,7 @@ export function parseFritzingSvg(svgSource: string, options: PrinterOptions): Bo
   const pads: Pad[] = [];
   const footprintCircles: FootprintCircle[] = [];
   const groundFills: GroundFill[] = [];
+  const textLabels: TextLabel[] = [];
   const boardRect: { value: Rect | null } = { value: null };
 
   const rootTransform = identity();
@@ -361,6 +398,7 @@ export function parseFritzingSvg(svgSource: string, options: PrinterOptions): Bo
     if (child.nodeType !== 1 || child.tagName !== 'g') continue;
     walkGroup(child, rootTransform, svgUnitsPerMm, options, traces, pads, footprintCircles, boardRect);
     collectGroundFills(child, rootTransform, groundFills);
+    collectTextLabels(child, rootTransform, textLabels);
   }
 
   const dedupedPads = deduplicatePads(pads);
@@ -372,5 +410,6 @@ export function parseFritzingSvg(svgSource: string, options: PrinterOptions): Bo
     pads: dedupedPads,
     footprintCircles,
     groundFills,
+    textLabels,
   };
 }

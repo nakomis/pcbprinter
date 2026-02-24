@@ -25,6 +25,8 @@ program
   .option('--bump-chamfer <mm>', 'Chamfer step width at top of press bumps (0 = none)', String(DEFAULT_OPTIONS.bumpChamferMm))
   .option('--press-thickness <mm>', 'Thickness of press backing plate in mm', String(DEFAULT_OPTIONS.pressThicknessMm))
   .option('--finger-indent <mm>', 'Depth (sagitta) of finger-indent notch on each press side, chord fixed at 20mm (0 = none)', String(DEFAULT_OPTIONS.fingerIndentMm))
+  .option('--text-relief <mm>', 'Height of raised silkscreen text on pcb top face (0 = none)', String(DEFAULT_OPTIONS.textReliefMm))
+  .option('--font-path <path>', 'Path to TTF/OTF font for text rendering (defaults to system monospace)')
   .option('--drill-diameter <mm>', 'Drill hole diameter in mm', String(DEFAULT_OPTIONS.drillDiameterMm))
   .option('--snap-tolerance <mm>', 'Max distance to snap trace end to pad centre in mm', String(DEFAULT_OPTIONS.snapToleranceMm))
   .option('--trace-segments <n>', 'Circle segments for rounded trace ends', String(DEFAULT_OPTIONS.traceSegments))
@@ -50,6 +52,8 @@ program
       bumpChamferMm: parseFloat(opts.bumpChamfer),
       pressThicknessMm: parseFloat(opts.pressThickness),
       fingerIndentMm: parseFloat(opts.fingerIndent),
+      textReliefMm: parseFloat(opts.textRelief),
+      fontPath: opts.fontPath,
       drillDiameterMm: parseFloat(opts.drillDiameter),
       snapToleranceMm: parseFloat(opts.snapTolerance),
       traceSegments: parseInt(opts.traceSegments, 10),

@@ -11,6 +11,8 @@ export interface BoardModel {
   footprintCircles: FootprintCircle[];
   /** Copper groundfill shapes — each is a list of contours (outer + holes) in absolute SVG units. */
   groundFills: GroundFill[];
+  /** Silkscreen text labels to be rendered as raised relief on the pcb. */
+  textLabels?: TextLabel[];
 }
 
 /**
@@ -48,6 +50,23 @@ export interface FootprintCircle {
   cx: number; cy: number; r: number;
 }
 
+/**
+ * A silkscreen text label parsed from the SVG.
+ * Glyph points from opentype.js (in SVG user units, y-down) are transformed
+ * by `matrix` to get SVG global coordinates, then divided by svgUnitsPerMm
+ * and y-flipped to reach manifold mm space.
+ */
+export interface TextLabel {
+  text: string;
+  /** Font size in SVG user units (in local coordinate space, before matrix). */
+  fontSize: number;
+  /** Baseline origin in the silkscreenLabel group's local space (usually 0, fontSize). */
+  textX: number;
+  textY: number;
+  /** Accumulated row-major 3×3 affine transform (same layout as Matrix3 in transform.ts). */
+  matrix: [number,number,number, number,number,number, number,number,number];
+}
+
 export interface PrinterOptions {
   outDir: string;
   writeSvg: boolean;
@@ -63,6 +82,10 @@ export interface PrinterOptions {
   /** Depth (sagitta) of the finger-indent notch on each side of the press in mm (0 = none).
    *  Chord is fixed at 20 mm; this controls how far the arc cuts into the plate. */
   fingerIndentMm: number;
+  /** Height of raised text relief on pcb top face in mm (0 = no text). */
+  textReliefMm: number;
+  /** Path to a TTF/OTF font file for text rendering (Node.js only; defaults to system monospace). */
+  fontPath?: string;
   drillDiameterMm: number;
   snapToleranceMm: number;
   traceSegments: number;
@@ -78,6 +101,7 @@ export const DEFAULT_OPTIONS: PrinterOptions = {
   bumpChamferMm: 0.2,
   pressThicknessMm: 10,
   fingerIndentMm: 4,
+  textReliefMm: 0,
   drillDiameterMm: 1.3,
   snapToleranceMm: 1.5,
   traceSegments: 32,
