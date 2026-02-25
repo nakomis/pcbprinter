@@ -66,15 +66,9 @@ case "$BUMP" in
   *)     NEXT_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-SNAPSHOT" ;;
 esac
 
-# --- Bump to next SNAPSHOT ---
+# --- Bump version.json to next SNAPSHOT (package.json stays at release version) ---
 echo "{ \"version\": \"$NEXT_VERSION\" }" > "$VERSION_FILE"
-node -e "
-  const fs = require('fs');
-  const pkg = JSON.parse(fs.readFileSync('package.json', 'utf-8'));
-  pkg.version = '$NEXT_VERSION';
-  fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-"
-git add "$VERSION_FILE" package.json
+git add "$VERSION_FILE"
 git commit -m "Bump pcbprinter to $NEXT_VERSION"
 
 # --- Push ---
