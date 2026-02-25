@@ -391,14 +391,26 @@ export function parseFritzingSvg(svgSource: string, options: PrinterOptions): Bo
 
   const rootTransform = identity();
 
-  // Walk top-level g elements, passing identity as parent transform
+  // Walk top-level elements
   const children = svgEl.childNodes;
   for (let i = 0; i < children.length; i++) {
     const child = children[i] as Element;
-    if (child.nodeType !== 1 || child.tagName !== 'g') continue;
-    walkGroup(child, rootTransform, svgUnitsPerMm, options, traces, pads, footprintCircles, boardRect);
-    collectGroundFills(child, rootTransform, groundFills);
-    collectTextLabels(child, rootTransform, textLabels);
+    if (child.nodeType !== 1) continue;
+    if (child.tagName === 'g') {
+      walkGroup(child, rootTransform, svgUnitsPerMm, options, traces, pads, footprintCircles, boardRect);
+      collectGroundFills(child, rootTransform, groundFills);
+      collectTextLabels(child, rootTransform, textLabels);
+    } else if (child.tagName === 'text' && isLabel(child.getAttribute('id') ?? '')) {
+      // Top-level <text id="label"> elements (e.g. {version} placeholder in Fritzing SVGs)
+      const text = (child.textContent ?? '').trim();
+      if (text) {
+        const fontSizeAttr = child.getAttribute('font-size');
+        const fontSize = fontSizeAttr ? parseFloat(fontSizeAttr) : 5;
+        const textX = parseFloat(child.getAttribute('x') ?? '0');
+        const textY = parseFloat(child.getAttribute('y') ?? String(fontSize));
+        textLabels.push({ text, fontSize, textX, textY, matrix: rootTransform });
+      }
+    }
   }
 
   const dedupedPads = deduplicatePads(pads);
