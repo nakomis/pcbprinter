@@ -331,9 +331,10 @@ export async function buildStls(
           board = board.add(
             textCS.extrude(options.textReliefMm + eps).translate([0, 0, t - eps]),
           );
-          // Bottom face: same XY footprint, protrudes downward from z = 0
-          board = board.add(
-            textCS.extrude(options.textReliefMm + eps).translate([0, 0, -options.textReliefMm]),
+          // Bottom face: debossed — same XY footprint, cut upward into board from z = 0.
+          // Board stays flat at z = 0 so it sits perfectly on the print bed.
+          board = board.subtract(
+            textCS.extrude(options.textReliefMm + eps).translate([0, 0, -eps]),
           );
         } catch { /* skip degenerate glyph */ }
       }
