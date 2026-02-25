@@ -400,7 +400,7 @@ export function parseFritzingSvg(svgSource: string, options: PrinterOptions): Bo
       walkGroup(child, rootTransform, svgUnitsPerMm, options, traces, pads, footprintCircles, boardRect);
       collectGroundFills(child, rootTransform, groundFills);
       collectTextLabels(child, rootTransform, textLabels);
-    } else if (child.tagName === 'text' && isLabel(child.getAttribute('id') ?? '')) {
+    } else if (child.tagName === 'text' && idContainsLabel(child.getAttribute('id'))) {
       // Top-level <text id="label"> elements (e.g. {version} placeholder in Fritzing SVGs)
       const text = (child.textContent ?? '').trim();
       if (text) {
