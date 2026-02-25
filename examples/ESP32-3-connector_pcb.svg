@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='UTF-8' standalone='no'?>
 <!-- Created with Fritzing (https://fritzing.org/) -->
-<svg xmlns="http://www.w3.org/2000/svg" pcbProfile="tiny" height="3.48718in" version="1.2" viewBox="0 0 155.57 251.077" width="2.16069in" x="0in"  xmlns:svg="http://www.w3.org/2000/svg" y="0in">
+<svg xmlns="http://www.w3.org/2000/svg" baseProfile="tiny" height="3.48718in" version="1.2" viewBox="0 0 155.57 251.077" width="2.16069in" x="0in"  xmlns:svg="http://www.w3.org/2000/svg" y="0in">
  <g id="watermark" >
   <g >
    <g >
@@ -73,8 +73,8 @@
    </g>
   </g>
  </g>
- <g partID="535050">
-  <g transform="translate(99.982,32.6258)">
+ <g partID="534490">
+  <g transform="translate(25.0598,32.1518)">
    <g transform="matrix(0,-1,1,0,0,0)">
     <g id="copper0" >
      <g id="copper1" >
@@ -103,8 +103,8 @@
    </g>
   </g>
  </g>
- <g partID="534490">
-  <g transform="translate(25.0598,32.1518)">
+ <g partID="535050">
+  <g transform="translate(99.982,32.6258)">
    <g transform="matrix(0,-1,1,0,0,0)">
     <g id="copper0" >
      <g id="copper1" >
@@ -149,11 +149,11 @@
  <g partID="543080">
   <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="122.092" x2="114.091" y1="29.7304" y2="84.1007"/>
  </g>
- <g partID="543220">
-  <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="92.154" x2="43.2363" y1="212.867" y2="222.055"/>
- </g>
  <g partID="543150">
   <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="107.78" x2="92.154" y1="29.7405" y2="212.867"/>
+ </g>
+ <g partID="543220">
+  <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="92.154" x2="43.2363" y1="212.867" y2="222.055"/>
  </g>
  <g partID="543360">
   <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="25.6147" x2="40.5471" y1="96.8648" y2="99.6594"/>
@@ -161,23 +161,23 @@
  <g partID="543290">
   <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="46.9468" x2="25.6147" y1="29.2052" y2="96.8648"/>
  </g>
- <g partID="543500">
-  <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="11.4824" x2="40.5252" y1="105.697" y2="107.039"/>
- </g>
  <g partID="543430">
   <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="32.5966" x2="11.4824" y1="29.2199" y2="105.697"/>
  </g>
- <g partID="543640">
-  <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="57.7067" x2="43.2142" y1="110.114" y2="113.952"/>
+ <g partID="543500">
+  <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="11.4824" x2="40.5252" y1="105.697" y2="107.039"/>
  </g>
  <g partID="543570">
   <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="71.9471" x2="57.7067" y1="29.3273" y2="110.114"/>
  </g>
- <g partID="543780">
-  <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="65.3616" x2="43.2213" y1="127.19" y2="121.825"/>
+ <g partID="543640">
+  <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="57.7067" x2="43.2142" y1="110.114" y2="113.952"/>
  </g>
  <g partID="543710">
   <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="86.2959" x2="65.3616" y1="29.3173" y2="127.19"/>
+ </g>
+ <g partID="543780">
+  <line stroke="#f28a00" stroke-linecap="round" stroke-width="5.76" x1="65.3616" x2="43.2213" y1="127.19" y2="121.825"/>
  </g>
  <g partID="57932">
   <g id="silkscreen" >
@@ -229,6 +229,24 @@
      <line fill="none" id="vertical-right" stroke="#000000" stroke-width="0.75" x1="28.86" x2="28.86"  y1="29.939" y2="0.36"/>
      <line fill="none" id="top" stroke="#000000" stroke-width="0.75" x1="28.86" x2="0.36"  y1="0.36" y2="0.36"/>
      <line fill="none" id="mid-vertical" stroke="#000000" stroke-width="0.75" x1="18.605" x2="18.605"  y1="29.939" y2="0.36"/>
+    </g>
+   </g>
+  </g>
+ </g>
+ <g partID="545850">
+  <g transform="translate(129.078,188.488)">
+   <g transform="matrix(0,-1,1,0,0,0)">
+    <g id="silkscreen" >
+     <text fill="#000000" font-family="OCR-Fritzing-mono" font-size="7.19999" id="label" stroke-width="0" text-anchor="middle" x="19.6312" xml:space="preserve"  xmlns:xml="http://www.w3.org/XML/1998/namespace" y="8.865">Version</text>
+    </g>
+   </g>
+  </g>
+ </g>
+ <g partID="545880">
+  <g transform="translate(129.069,147.27)">
+   <g transform="matrix(0,-1,1,0,0,0)">
+    <g id="silkscreen" >
+     <text fill="#000000" font-family="OCR-Fritzing-mono" font-size="7.2" id="label" stroke-width="0" text-anchor="middle" x="24.8288" xml:space="preserve"  xmlns:xml="http://www.w3.org/XML/1998/namespace" y="8.865">{version}</text>
     </g>
    </g>
   </g>
