@@ -313,7 +313,10 @@ function collectGroundFills(
 }
 
 /**
- * Walk the DOM collecting silkscreen text labels from <g id="silkscreenLabel"> groups.
+ * Walk the DOM collecting silkscreen text labels.
+ * Handles both <g id="silkscreenLabel"> (font-size on group) and
+ * <g id="silkscreen"> (font-size on individual <text> children, as used by
+ * Fritzing for per-part label groups with their own transforms).
  * The accumulated transform through all ancestor <g> elements is passed down so that
  * each glyph point can be mapped to SVG global coordinates by the caller.
  */
@@ -325,14 +328,17 @@ function collectTextLabels(
   const id = node.getAttribute('id') ?? '';
   const transform = computeTransform(node, parentTransform);
 
-  if (id === 'silkscreenLabel') {
-    const fontSizeAttr = node.getAttribute('font-size');
-    const fontSize = fontSizeAttr ? parseFloat(fontSizeAttr) : 5;
+  if (id === 'silkscreenLabel' || id === 'silkscreen') {
+    const groupFontSizeAttr = node.getAttribute('font-size');
+    const groupFontSize = groupFontSizeAttr ? parseFloat(groupFontSizeAttr) : 5;
     for (let i = 0; i < node.childNodes.length; i++) {
       const child = node.childNodes[i] as Element;
       if (child.nodeType !== 1 || child.tagName !== 'text') continue;
       const text = (child.textContent ?? '').trim();
       if (!text) continue;
+      // font-size may be on the <text> element itself (silkscreen) or on the group (silkscreenLabel)
+      const childFontSizeAttr = child.getAttribute('font-size');
+      const fontSize = childFontSizeAttr ? parseFloat(childFontSizeAttr) : groupFontSize;
       const textX = parseFloat(child.getAttribute('x') ?? '0');
       const textY = parseFloat(child.getAttribute('y') ?? String(fontSize));
       textLabels.push({ text, fontSize, textX, textY, matrix: transform });

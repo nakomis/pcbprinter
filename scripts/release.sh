@@ -74,4 +74,11 @@ git commit -m "Bump pcbprinter to $NEXT_VERSION"
 # --- Push ---
 git push && git push --tags
 
+# --- Update sandboxsite dependency ---
+SANDBOXSITE_APP="$REPO_DIR/../sandboxsite/sandbox-app"
+if [ -d "$SANDBOXSITE_APP" ]; then
+  echo "Running npm install in sandboxsite/sandbox-app..."
+  (cd "$SANDBOXSITE_APP" && npm install)
+fi
+
 echo "Release complete! Released pcbprinter/$RELEASE_VERSION, next: $NEXT_VERSION"
