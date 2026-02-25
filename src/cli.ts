@@ -9,12 +9,14 @@ import { snapTracesToPads } from './pads.js';
 import { buildSvg } from './svgWriter.js';
 import { buildStls } from './stlWriter.js';
 import { DEFAULT_OPTIONS, type PrinterOptions } from './types.js';
+import versionData from '../version.json' with { type: 'json' };
 
 const program = new Command();
 
 program
   .name('pcbprinter')
   .description('Convert Fritzing PCB SVG exports to 3D-printable STL files')
+  .version(versionData.version)
   .argument('<input>', 'Fritzing PCB SVG export (.svg) or project file (.fz)')
   .option('-o, --out-dir <dir>', 'Output directory', DEFAULT_OPTIONS.outDir)
   .option('--svg', 'Also write intermediate SVG', false)

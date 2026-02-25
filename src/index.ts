@@ -1,3 +1,6 @@
+import versionData from '../version.json' with { type: 'json' };
+export const VERSION: string = versionData.version;
+
 export { parseFritzingSvg } from './parser.js';
 export { parseFritzingFz } from './fzParser.js';
 export { snapTracesToPads } from './pads.js';
