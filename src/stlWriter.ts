@@ -455,6 +455,30 @@ export async function buildStls(
     .mirror([1, 0, 0])
     .translate([boardCx, 0, 0]);
 
+  // ── PRESS TEXT RELIEF ─────────────────────────────────────────────────────
+  // Version/label text is raised on the press backing plate (z=0 face),
+  // protruding outward in the -z direction so the stamp is visible when the
+  // press is flipped for use.  Added after the x-mirror so the text sits at
+  // the same manifold coordinates as the corresponding PCB labels.
+  if (options.textReliefMm > 0 && textLabels.length > 0) {
+    const font = options.fontData ? parseFont(options.fontData) : null;
+    if (font) {
+      for (const label of textLabels) {
+        const contours = textToContours(font, label, model.svgUnitsPerMm);
+        if (contours.length === 0) continue;
+        try {
+          const reversed = contours.map(c => c.slice().reverse());
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const textCS = new (CS as any)(reversed, 'EvenOdd') as typeof CS;
+          // Raised text protruding below z=0 (backing plate bottom face).
+          press = press.add(
+            textCS.extrude(options.textReliefMm).translate([0, 0, -options.textReliefMm]),
+          );
+        } catch { /* skip degenerate glyph */ }
+      }
+    }
+  }
+
   return {
     pcb: meshToStlBuffer(board.getMesh()),
     press: meshToStlBuffer(press.getMesh()),
