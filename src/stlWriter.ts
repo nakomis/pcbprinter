@@ -306,8 +306,8 @@ export async function buildStls(
   }
 
   // ── TEXT RELIEF ───────────────────────────────────────────────────────────
-  // Silkscreen labels are raised above the pcb top face (z = t) by textReliefMm,
-  // and also raised below the pcb bottom face (z = 0) by the same amount.
+  // Silkscreen labels are debossed into both faces of the pcb board.
+  // Top face: cut downward from z=t; bottom face: cut upward from z=0.
   // The bottom text is a direct z-axis translation of the top text (same XY footprint,
   // no horizontal mirror) — it appears backwards when viewed from below, which is
   // intentional so that characters remain adjacent to the same holes on both faces.
@@ -322,16 +322,16 @@ export async function buildStls(
         try {
           // Reverse each contour: opentype.js y-flip leaves outer contours CCW in
           // manifold space, but manifold's CrossSection treats CW as filled (outer).
-          // Reversing swaps CCW→CW (outer→filled) and CW→CCW (hole→hole), so the
-          // extrusion has correct outward normals and board.add() raises the text.
+          // Reversing swaps CCW→CW (outer→filled) and CW→CCW (hole→hole).
           const reversed = contours.map(c => c.slice().reverse());
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const textCS = new (CS as any)(reversed, 'EvenOdd') as typeof CS;
-          // Top face: protrudes upward from z = t
-          board = board.add(
-            textCS.extrude(options.textReliefMm + eps).translate([0, 0, t - eps]),
+          // Top face: debossed — cut downward into board from z = t.
+          // eps overrun above z=t breaks coplanarity with the top face.
+          board = board.subtract(
+            textCS.extrude(options.textReliefMm + eps).translate([0, 0, t - options.textReliefMm]),
           );
-          // Bottom face: debossed — same XY footprint, cut upward into board from z = 0.
+          // Bottom face: debossed — cut upward into board from z = 0.
           // Board stays flat at z = 0 so it sits perfectly on the print bed.
           board = board.subtract(
             textCS.extrude(options.textReliefMm + eps).translate([0, 0, -eps]),
