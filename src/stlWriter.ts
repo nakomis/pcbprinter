@@ -306,7 +306,11 @@ export async function buildStls(
   }
 
   // ── TEXT RELIEF ───────────────────────────────────────────────────────────
-  // Silkscreen labels are raised above the pcb top face (z = t) by textReliefMm.
+  // Silkscreen labels are raised above the pcb top face (z = t) by textReliefMm,
+  // and also raised below the pcb bottom face (z = 0) by the same amount.
+  // The bottom text is a direct z-axis translation of the top text (same XY footprint,
+  // no horizontal mirror) — it appears backwards when viewed from below, which is
+  // intentional so that characters remain adjacent to the same holes on both faces.
   // Uses EvenOdd fill so letter holes (O, 0, etc.) render correctly.
   const textLabels = model.textLabels ?? [];
   if (options.textReliefMm > 0 && textLabels.length > 0) {
@@ -323,8 +327,13 @@ export async function buildStls(
           const reversed = contours.map(c => c.slice().reverse());
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const textCS = new (CS as any)(reversed, 'EvenOdd') as typeof CS;
+          // Top face: protrudes upward from z = t
           board = board.add(
             textCS.extrude(options.textReliefMm + eps).translate([0, 0, t - eps]),
+          );
+          // Bottom face: same XY footprint, protrudes downward from z = 0
+          board = board.add(
+            textCS.extrude(options.textReliefMm + eps).translate([0, 0, -options.textReliefMm]),
           );
         } catch { /* skip degenerate glyph */ }
       }
